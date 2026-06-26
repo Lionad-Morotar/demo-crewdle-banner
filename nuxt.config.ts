@@ -7,4 +7,7 @@ export default defineNuxtConfig({
   future: {
     compatibilityVersion: 4,
   },
+  app: {
+    baseURL: '/crewdle-banner/',
+  },
 })
