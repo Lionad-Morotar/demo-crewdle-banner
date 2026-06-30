@@ -45,11 +45,22 @@
       </span>
     </a>
 
-    <!-- 右下角 CTA -->
-    <a class="cta-btn" href="https://auth.crewdle.ai/signup" target="_blank" rel="noopener">
-      <span>Start for free</span>
-      <span class="cta-arrow">→</span>
-    </a>
+    <!-- 右下角 CTA + demo 文案 -->
+    <div class="right-bottom-group">
+      <a class="cta-btn" href="https://auth.crewdle.ai/signup" target="_blank" rel="noopener">
+        <span>Start for free</span>
+        <span class="cta-arrow">→</span>
+      </a>
+      <a class="demo-link" href="#demo" target="_blank" rel="noopener">Or book a 30-minute demo →</a>
+      <span class="credits-note">Free credits when you sign up.</span>
+    </div>
+
+    <!-- 右下角聊天按钮 -->
+    <button class="chat-btn" type="button" aria-label="Open chat">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M21 11.5C21.0034 12.8199 20.6951 14.1219 20.1 15.3C19.3944 16.7118 18.3098 17.8992 16.9674 18.7293C15.6251 19.5594 14.0782 19.9994 12.5 20C11.1801 20.0035 9.87812 19.6951 8.7 19.1L3 21L4.9 15.3C4.30493 14.1219 3.99656 12.8199 4 11.5C4.00061 9.92179 4.44061 8.37488 5.27072 7.03258C6.10083 5.69028 7.28825 4.6056 8.7 3.90003C9.87812 3.30496 11.1801 2.99659 12.5 3.00003H13C15.0843 3.11502 17.053 3.99479 18.5291 5.47089C20.0052 6.94699 20.885 8.91568 21 11V11.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
   </section>
 </template>
 
@@ -77,17 +88,17 @@
 
 .ambient-glow {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 160vw;
-  height: 160vw;
+  top: 58%;
+  left: 58%;
+  width: 200vw;
+  height: 200vw;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(255, 105, 38, 0.20) 0%,
-    rgba(255, 105, 38, 0.07) 28%,
-    transparent 60%
+    rgba(255, 115, 50, 0.16) 0%,
+    rgba(255, 95, 40, 0.07) 30%,
+    transparent 66%
   );
   pointer-events: none;
   z-index: 0;
@@ -126,11 +137,18 @@
   max-width: 420px;
 }
 
-.cta-btn {
+.right-bottom-group {
   position: absolute;
   right: 64px;
   bottom: 64px;
   z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cta-btn {
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -142,6 +160,54 @@
   padding: 16px 28px;
   border-radius: 999px;
   transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.demo-link {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgb(241, 235, 226);
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.demo-link:hover {
+  opacity: 1;
+}
+
+.credits-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgb(165, 152, 142);
+}
+
+.chat-btn {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  z-index: 50;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background-color: rgb(255, 83, 34);
+  color: rgb(255, 255, 255);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(255, 83, 34, 0.35);
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.chat-btn:hover {
+  background-color: rgb(255, 100, 50);
+  transform: translateY(-2px);
+}
+
+.chat-btn svg {
+  width: 24px;
+  height: 24px;
 }
 
 .cta-btn:hover {
@@ -272,9 +338,14 @@
     top: 100px;
   }
 
-  .cta-btn {
+  .right-bottom-group {
     right: 32px;
     bottom: 48px;
+  }
+
+  .chat-btn {
+    right: 20px;
+    bottom: 20px;
   }
 
   .ph-badge {
@@ -302,9 +373,14 @@
     display: none;
   }
 
-  .cta-btn {
+  .right-bottom-group {
     right: 20px;
     bottom: 90px;
+  }
+
+  .chat-btn {
+    right: 16px;
+    bottom: 16px;
   }
 
   .ph-badge {
