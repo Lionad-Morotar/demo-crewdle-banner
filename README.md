@@ -33,3 +33,7 @@ Token 消耗
 ### Config Panel
 
 ![Config Panel](./assets/banner/config-panel.png)
+
+### Shape Tour
+
+![Shape Tour](./assets/banner/shape-tour.png)
