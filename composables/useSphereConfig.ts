@@ -148,9 +148,11 @@ export function createDefaultConfig(): SphereConfig {
 
 /**
  * 深拷贝配置对象，用于 Reset 或导出时避免引用污染。
+ *
+ * 要求 SphereConfig 保持结构化克隆安全（无函数、DOM 节点、循环引用等）。
  */
 export function cloneConfig(config: SphereConfig): SphereConfig {
-  return JSON.parse(JSON.stringify(config))
+  return structuredClone(config)
 }
 
 /**
