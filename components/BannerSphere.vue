@@ -3,18 +3,30 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import * as THREE from 'three'
 import type { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
+import type { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
+import type { SphereConfig } from '~/composables/useSphereConfig'
 
 /**
  * 复刻 Crewdle Banner 的巨型半透明虹彩气泡球。
+ *
+ * 本组件接收外部 SphereConfig 配置，所有视觉参数均可在运行时通过 props 更新。
  * - IcosahedronGeometry + 多层 Simplex noise 实现有机缓慢形变
  * - MeshPhysicalMaterial 开启 transmission 模拟半透明油膜/气泡
  * - 程序化 CubeTexture 环境贴图复刻参考图的紫/黄绿/白/青绿/橙琥珀反光
  * - 鼠标位置经 lerp 平滑后驱动局部形变与虚拟光源，制造液体惯性
  * - EffectComposer + UnrealBloomPass 柔化高光与边缘光
  */
+interface Props {
+  config?: SphereConfig
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  config: () => createDefaultConfig(),
+})
+
 const container = ref<HTMLDivElement | null>(null)
 
 let renderer: THREE.WebGLRenderer | null = null
@@ -23,53 +35,22 @@ let camera: THREE.PerspectiveCamera | null = null
 let sphere: THREE.Mesh | null = null
 let material: THREE.MeshPhysicalMaterial | null = null
 let composer: EffectComposer | null = null
+let bloomPass: UnrealBloomPass | null = null
+let geometry: THREE.IcosahedronGeometry | null = null
+let envMap: THREE.CubeTexture | null = null
 let rafId = 0
+let envMapFaces: HTMLCanvasElement[] = []
+let handleResize: (() => void) | null = null
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 可调参数（所有视觉 tweak 集中在此）
-// ─────────────────────────────────────────────────────────────────────────────
-const CONFIG = {
-  geometry: {
-    radius: 1.45,
-    detail: 5,
-  },
-  camera: {
-    z: 3.45,
-  },
-  material: {
-    color: 0x241a14,
-    emissive: 0x120d0a,
-    metalness: 0.08,
-    roughness: 0.26,
-    transmission: 0.50,
-    thickness: 3.5,
-    ior: 1.30,
-    clearcoat: 0.55,
-    clearcoatRoughness: 0.28,
-    iridescence: 0.90,
-    iridescenceIOR: 1.42,
-    iridescenceThicknessRange: [160, 520] as [number, number],
-    envMapIntensity: 2.60,
-  },
-  noise: {
-    lowFreq: 0.45,
-    lowAmp: 0.07,
-    lowSpeed: 0.05,
-    highFreq: 1.55,
-    highAmp: 0.022,
-    highSpeed: 0.10,
-    mouseInfluence: 0.060,
-  },
-  mouse: {
-    lerp: 0.038,
-    idleDecay: 0.015,
-  },
-  bloom: {
-    enabled:true,
-    threshold: 0.92,
-    strength: 0.10,
-    radius: 0.45,
-  },
+// Shader uniforms 引用，便于运行时直接修改噪声参数
+const noiseUniforms = {
+  uLowFreq: { value: 0 },
+  uLowAmp: { value: 0 },
+  uLowSpeed: { value: 0 },
+  uHighFreq: { value: 0 },
+  uHighAmp: { value: 0 },
+  uHighSpeed: { value: 0 },
+  uMouseInfluence: { value: 0 },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,7 +121,7 @@ interface FaceDef {
   zones: ZoneDef[]
 }
 
-function createEnvironmentMap(): THREE.CubeTexture {
+function createEnvironmentMap(): { texture: THREE.CubeTexture; faces: HTMLCanvasElement[] } {
   const size = 512
   const faces: HTMLCanvasElement[] = []
 
@@ -232,9 +213,9 @@ function createEnvironmentMap(): THREE.CubeTexture {
     faces.push(canvas)
   }
 
-  const cube = new THREE.CubeTexture(faces)
-  cube.needsUpdate = true
-  return cube
+  const texture = new THREE.CubeTexture(faces)
+  texture.needsUpdate = true
+  return { texture, faces }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -258,6 +239,109 @@ function handleMouseMove(e: MouseEvent) {
   }, 120)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 运行时更新函数
+// ─────────────────────────────────────────────────────────────────────────────
+function updateNoiseUniforms() {
+  const n = props.config.noise
+  noiseUniforms.uLowFreq.value = n.lowFreq
+  noiseUniforms.uLowAmp.value = n.lowAmp
+  noiseUniforms.uLowSpeed.value = n.lowSpeed
+  noiseUniforms.uHighFreq.value = n.highFreq
+  noiseUniforms.uHighAmp.value = n.highAmp
+  noiseUniforms.uHighSpeed.value = n.highSpeed
+  noiseUniforms.uMouseInfluence.value = n.mouseInfluence
+}
+
+function updateGeometry() {
+  if (!sphere) return
+  const oldGeometry = geometry
+  geometry = new THREE.IcosahedronGeometry(props.config.geometry.radius, props.config.geometry.detail)
+  sphere.geometry = geometry
+  oldGeometry?.dispose()
+}
+
+function updateMaterial() {
+  if (!material) return
+  const m = props.config.material
+  material.color.set(m.color)
+  material.emissive.set(m.emissive)
+  material.metalness = m.metalness
+  material.roughness = m.roughness
+  material.transmission = m.transmission
+  material.thickness = m.thickness
+  material.ior = m.ior
+  material.clearcoat = m.clearcoat
+  material.clearcoatRoughness = m.clearcoatRoughness
+  material.iridescence = m.iridescence
+  material.iridescenceIOR = m.iridescenceIOR
+  material.iridescenceThicknessRange[0] = m.iridescenceThicknessMin
+  material.iridescenceThicknessRange[1] = m.iridescenceThicknessMax
+  material.envMapIntensity = m.envMapIntensity
+  // 标量属性变更不需要强制 needsUpdate；保留注释说明即可
+}
+
+function updateCamera() {
+  if (camera) camera.position.z = props.config.camera.z
+}
+
+function updateBloomPass() {
+  if (!bloomPass) return
+  const b = props.config.bloom
+  bloomPass.threshold = b.threshold
+  bloomPass.strength = b.strength
+  bloomPass.radius = b.radius
+}
+
+let isRebuildingBloom = false
+
+async function rebuildBloomPipeline() {
+  if (!renderer || !scene || !camera || !container.value || isRebuildingBloom) return
+  isRebuildingBloom = true
+
+  try {
+    const width = container.value.clientWidth
+    const height = container.value.clientHeight
+
+    // 清理旧后处理
+    if (composer) {
+      composer.dispose()
+      composer = null
+      bloomPass = null
+    }
+
+    if (props.config.bloom.enabled) {
+      try {
+        const { EffectComposer } = await import('three/examples/jsm/postprocessing/EffectComposer.js')
+        const { RenderPass } = await import('three/examples/jsm/postprocessing/RenderPass.js')
+        const { UnrealBloomPass } = await import('three/examples/jsm/postprocessing/UnrealBloomPass.js')
+
+        composer = new EffectComposer(renderer)
+        composer.addPass(new RenderPass(scene, camera))
+        bloomPass = new UnrealBloomPass(
+          new THREE.Vector2(width, height),
+          props.config.bloom.strength,
+          props.config.bloom.radius,
+          props.config.bloom.threshold
+        )
+        composer.addPass(bloomPass)
+      } catch (e) {
+        console.warn('Bloom post-processing unavailable, falling back to standard render.', e)
+      }
+    }
+  } finally {
+    isRebuildingBloom = false
+  }
+}
+
+// 监听配置变化并应用
+watch(() => props.config.geometry, updateGeometry, { deep: true })
+watch(() => props.config.material, updateMaterial, { deep: true })
+watch(() => props.config.camera, updateCamera, { deep: true })
+watch(() => props.config.bloom, updateBloomPass, { deep: true })
+watch(() => props.config.bloom.enabled, rebuildBloomPipeline)
+watch(() => props.config.noise, updateNoiseUniforms, { deep: true })
+
 onMounted(async () => {
   if (!container.value) return
 
@@ -266,7 +350,7 @@ onMounted(async () => {
 
   scene = new THREE.Scene()
   camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100)
-  camera.position.z = CONFIG.camera.z
+  camera.position.z = props.config.camera.z
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
   renderer.setSize(width, height)
@@ -275,56 +359,61 @@ onMounted(async () => {
   renderer.toneMappingExposure = 0.92
   container.value.appendChild(renderer.domElement)
 
-  const envMap = createEnvironmentMap()
+  const { texture: envMapTexture, faces } = createEnvironmentMap()
+  envMap = envMapTexture
+  envMapFaces = faces
   scene.environment = envMap
 
   // ── 几何体 ──
-  const geometry = new THREE.IcosahedronGeometry(CONFIG.geometry.radius, CONFIG.geometry.detail)
+  geometry = new THREE.IcosahedronGeometry(props.config.geometry.radius, props.config.geometry.detail)
 
   // ── 材质 ──
   material = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(CONFIG.material.color),
-    emissive: new THREE.Color(CONFIG.material.emissive),
-    metalness: CONFIG.material.metalness,
-    roughness: CONFIG.material.roughness,
-    transmission: CONFIG.material.transmission,
-    thickness: CONFIG.material.thickness,
-    ior: CONFIG.material.ior,
-    clearcoat: CONFIG.material.clearcoat,
-    clearcoatRoughness: CONFIG.material.clearcoatRoughness,
-    iridescence: CONFIG.material.iridescence,
-    iridescenceIOR: CONFIG.material.iridescenceIOR,
-    iridescenceThicknessRange: CONFIG.material.iridescenceThicknessRange,
+    color: new THREE.Color(props.config.material.color),
+    emissive: new THREE.Color(props.config.material.emissive),
+    metalness: props.config.material.metalness,
+    roughness: props.config.material.roughness,
+    transmission: props.config.material.transmission,
+    thickness: props.config.material.thickness,
+    ior: props.config.material.ior,
+    clearcoat: props.config.material.clearcoat,
+    clearcoatRoughness: props.config.material.clearcoatRoughness,
+    iridescence: props.config.material.iridescence,
+    iridescenceIOR: props.config.material.iridescenceIOR,
+    iridescenceThicknessRange: [props.config.material.iridescenceThicknessMin, props.config.material.iridescenceThicknessMax],
     envMap,
-    envMapIntensity: CONFIG.material.envMapIntensity,
+    envMapIntensity: props.config.material.envMapIntensity,
   })
 
   // ── Shader 注入：多层 noise + 鼠标驱动形变 ──
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 }
     shader.uniforms.uMouse = { value: new THREE.Vector2(0, 0) }
+    Object.assign(shader.uniforms, noiseUniforms)
+    updateNoiseUniforms()
+
     shader.vertexShader = `
       uniform float uTime;
       uniform vec2 uMouse;
+      uniform float uLowFreq;
+      uniform float uLowAmp;
+      uniform float uLowSpeed;
+      uniform float uHighFreq;
+      uniform float uHighAmp;
+      uniform float uHighSpeed;
+      uniform float uMouseInfluence;
       ${snoise}
     ` + shader.vertexShader.replace(
       '#include <begin_vertex>',
       `
       #include <begin_vertex>
-      float lowFreq = ${CONFIG.noise.lowFreq.toFixed(3)};
-      float lowAmp = ${CONFIG.noise.lowAmp.toFixed(3)};
-      float lowSpeed = ${CONFIG.noise.lowSpeed.toFixed(3)};
-      float highFreq = ${CONFIG.noise.highFreq.toFixed(3)};
-      float highAmp = ${CONFIG.noise.highAmp.toFixed(3)};
-      float highSpeed = ${CONFIG.noise.highSpeed.toFixed(3)};
-      float mouseInfluence = ${CONFIG.noise.mouseInfluence.toFixed(3)};
 
-      float displacement = snoise(position * lowFreq + vec3(0.0, uTime * lowSpeed, 0.0)) * lowAmp;
-      displacement += snoise(position * highFreq + vec3(uTime * highSpeed * 0.7, uTime * highSpeed, 0.0)) * highAmp;
+      float displacement = snoise(position * uLowFreq + vec3(0.0, uTime * uLowSpeed, 0.0)) * uLowAmp;
+      displacement += snoise(position * uHighFreq + vec3(uTime * uHighSpeed * 0.7, uTime * uHighSpeed, 0.0)) * uHighAmp;
 
       vec3 mouseDir = normalize(vec3(uMouse.x, uMouse.y, 0.35));
       float mouseProximity = smoothstep(0.85, 0.0, distance(normalize(position), mouseDir));
-      displacement += mouseProximity * mouseInfluence;
+      displacement += mouseProximity * uMouseInfluence;
 
       transformed += normal * displacement;
       `
@@ -349,27 +438,7 @@ onMounted(async () => {
   scene.add(mainLight)
 
   // ── 后处理 ──
-  if (CONFIG.bloom.enabled) {
-    try {
-      const { EffectComposer } = await import('three/examples/jsm/postprocessing/EffectComposer.js')
-      const { RenderPass } = await import('three/examples/jsm/postprocessing/RenderPass.js')
-      const { UnrealBloomPass } = await import('three/examples/jsm/postprocessing/UnrealBloomPass.js')
-
-      composer = new EffectComposer(renderer)
-      composer.addPass(new RenderPass(scene, camera))
-      composer.addPass(
-        new UnrealBloomPass(
-          new THREE.Vector2(width, height),
-          CONFIG.bloom.strength,
-          CONFIG.bloom.radius,
-          CONFIG.bloom.threshold
-        )
-      )
-    } catch (e) {
-      // 后处理失败时回退到普通渲染
-      console.warn('Bloom post-processing unavailable, falling back to standard render.', e)
-    }
-  }
+  await rebuildBloomPipeline()
 
   container.value.addEventListener('mousemove', handleMouseMove)
 
@@ -379,9 +448,9 @@ onMounted(async () => {
     const elapsed = clock.getElapsedTime()
 
     // 鼠标平滑
-    const decay = isMouseActive.value ? 0.0 : CONFIG.mouse.idleDecay
-    mouseCurrent.x += (mouseTarget.x - mouseCurrent.x) * CONFIG.mouse.lerp - mouseCurrent.x * decay
-    mouseCurrent.y += (mouseTarget.y - mouseCurrent.y) * CONFIG.mouse.lerp - mouseCurrent.y * decay
+    const decay = isMouseActive.value ? 0.0 : props.config.mouse.idleDecay
+    mouseCurrent.x += (mouseTarget.x - mouseCurrent.x) * props.config.mouse.lerp - mouseCurrent.x * decay
+    mouseCurrent.y += (mouseTarget.y - mouseCurrent.y) * props.config.mouse.lerp - mouseCurrent.y * decay
 
     if (material?.userData.shader) {
       material.userData.shader.uniforms.uTime.value = elapsed
@@ -402,7 +471,7 @@ onMounted(async () => {
   }
   animate()
 
-  const handleResize = () => {
+  handleResize = () => {
     if (!container.value || !camera || !renderer) return
     const w = container.value.clientWidth
     const h = container.value.clientHeight
@@ -415,25 +484,32 @@ onMounted(async () => {
   }
   window.addEventListener('resize', handleResize)
 
-  onUnmounted(() => {
-    window.removeEventListener('resize', handleResize)
-    container.value?.removeEventListener('mousemove', handleMouseMove)
-    window.clearTimeout(mouseTimeout)
-    cancelAnimationFrame(rafId)
+  // onUnmounted 必须在 setup 顶层注册，因此清理逻辑使用组件级变量
+})
 
-    if (renderer) {
-      renderer.dispose()
-      if (container.value && renderer.domElement.parentNode === container.value) {
-        container.value.removeChild(renderer.domElement)
-      }
+onUnmounted(() => {
+  if (handleResize) {
+    window.removeEventListener('resize', handleResize)
+  }
+  container.value?.removeEventListener('mousemove', handleMouseMove)
+  window.clearTimeout(mouseTimeout)
+  cancelAnimationFrame(rafId)
+
+  if (renderer) {
+    renderer.dispose()
+    renderer.forceContextLoss()
+    if (container.value && renderer.domElement.parentNode === container.value) {
+      container.value.removeChild(renderer.domElement)
     }
-    if (composer) {
-      composer.dispose()
-    }
-    geometry.dispose()
-    material?.dispose()
-    envMap.dispose()
-  })
+  }
+  if (composer) {
+    composer.dispose()
+  }
+  geometry?.dispose()
+  material?.dispose()
+  envMap?.dispose()
+  // 6 个 canvas 从未挂载到 DOM，清空引用即可被 GC
+  envMapFaces = []
 })
 </script>
 
