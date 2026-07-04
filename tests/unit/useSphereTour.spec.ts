@@ -29,24 +29,22 @@ describe('useSphereTour', () => {
     expect(tourConfig.geometry.detail).toBe(1)
   })
 
-  it('toggleStep 按顺序前进，不允许跳步', () => {
-    const { activeStepIndex, toggleStep } = useSphereTour()
+  it('selectStep 允许直接选择任意步骤', () => {
+    const { activeStepIndex, selectStep } = useSphereTour()
     expect(activeStepIndex.value).toBe(0)
-    toggleStep(2)
-    expect(activeStepIndex.value).toBe(0)
-    toggleStep(1)
+    selectStep(5)
+    expect(activeStepIndex.value).toBe(5)
+    selectStep(1)
     expect(activeStepIndex.value).toBe(1)
-    toggleStep(2)
-    expect(activeStepIndex.value).toBe(2)
   })
 
-  it('toggleStep 回退会清空后续步骤状态', () => {
-    const { activeStepIndex, tourConfig, completeAll, toggleStep } = useSphereTour()
+  it('selectStep 回退会清空后续步骤状态', () => {
+    const { activeStepIndex, tourConfig, completeAll, selectStep } = useSphereTour()
     completeAll()
     expect(activeStepIndex.value).toBe(8)
     expect(tourConfig.bloom.enabled).toBe(true)
 
-    toggleStep(1)
+    selectStep(1)
     expect(activeStepIndex.value).toBe(1)
     expect(tourConfig.bloom.enabled).toBe(false)
     expect(tourConfig.geometry.detail).toBe(12)

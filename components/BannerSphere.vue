@@ -1,5 +1,10 @@
 <template>
-  <div ref="container" class="sphere-scene" aria-hidden="true"></div>
+  <div
+    ref="container"
+    class="sphere-scene"
+    :class="{ 'has-camera-control': enableCameraControl }"
+    aria-hidden="true"
+  ></div>
 </template>
 
 <script setup lang="ts">
@@ -21,10 +26,13 @@ import type { SphereConfig } from '~/composables/useSphereConfig'
  */
 interface Props {
   config?: SphereConfig
+  /** 是否启用相机交互（拖拽旋转、双指平移、滚轮/捏合缩放），支持运行时切换 */
+  enableCameraControl?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   config: () => createDefaultConfig(),
+  enableCameraControl: false,
 })
 
 const container = ref<HTMLDivElement | null>(null)
@@ -42,6 +50,22 @@ let rafId = 0
 let envMapFaces: HTMLCanvasElement[] = []
 let handleResize: (() => void) | null = null
 
+// 相机交互基准状态，用于 reset 时恢复
+const CAMERA_BASE = {
+  azimuth: 0,
+  polar: Math.PI / 2,
+  radiusOffset: 0,
+  panX: 0,
+  panY: 0,
+}
+
+// 相机交互控制：拖拽旋转、双指平移、滚轮缩放
+const cameraControl = { ...CAMERA_BASE }
+let isDragging = false
+let cameraListenersAttached = false
+let lastPointerX = 0
+let lastPointerY = 0
+
 // Shader uniforms 引用，便于运行时直接修改噪声参数
 const noiseUniforms = {
   uLowFreq: { value: 0 },
@@ -55,6 +79,7 @@ const noiseUniforms = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Simplex noise GLSL
+// tour-marker: simplex-noise
 // ─────────────────────────────────────────────────────────────────────────────
 const snoise = `
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -107,6 +132,7 @@ const snoise = `
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 程序化环境贴图：按参考图分布色块
+// tour-marker: env-map-create
 // ─────────────────────────────────────────────────────────────────────────────
 interface ZoneDef {
   color: [number, number, number]
@@ -220,6 +246,7 @@ function createEnvironmentMap(): { texture: THREE.CubeTexture; faces: HTMLCanvas
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 鼠标平滑跟踪
+// tour-marker: mouse-track
 // ─────────────────────────────────────────────────────────────────────────────
 const mouseTarget = new THREE.Vector2(0, 0)
 const mouseCurrent = new THREE.Vector2(0, 0)
@@ -240,7 +267,92 @@ function handleMouseMove(e: MouseEvent) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 相机交互：拖拽旋转、双指平移、滚轮缩放
+// ─────────────────────────────────────────────────────────────────────────────
+function updateCameraTransform() {
+  if (!camera) return
+  const baseRadius = props.config.camera.z
+  const minRadius = props.config.geometry.radius * 1.5
+  const maxRadius = baseRadius * 4
+  const targetRadius = baseRadius + cameraControl.radiusOffset
+  const radius = Math.max(minRadius, Math.min(maxRadius, targetRadius))
+  camera.position.setFromSphericalCoords(radius, cameraControl.polar, cameraControl.azimuth)
+  const panLimit = radius * 0.75
+  camera.position.x += Math.max(-panLimit, Math.min(panLimit, cameraControl.panX))
+  camera.position.y += Math.max(-panLimit, Math.min(panLimit, cameraControl.panY))
+  camera.lookAt(0, 0, 0)
+}
+
+function handlePointerDown(e: PointerEvent) {
+  if (!container.value) return
+  isDragging = true
+  lastPointerX = e.clientX
+  lastPointerY = e.clientY
+  container.value.setPointerCapture(e.pointerId)
+}
+
+function handlePointerMove(e: PointerEvent) {
+  if (!isDragging) return
+  const dx = e.clientX - lastPointerX
+  const dy = e.clientY - lastPointerY
+  cameraControl.azimuth -= dx * 0.005
+  cameraControl.polar = Math.max(0.1, Math.min(Math.PI - 0.1, cameraControl.polar + dy * 0.005))
+  lastPointerX = e.clientX
+  lastPointerY = e.clientY
+}
+
+function handlePointerUp(e: PointerEvent) {
+  isDragging = false
+  try {
+    container.value?.releasePointerCapture(e.pointerId)
+  }
+  catch {
+    // 若 pointer 已释放或从未 capture，忽略异常
+  }
+}
+
+function handleWheel(e: WheelEvent) {
+  e.preventDefault()
+  const isPinch = e.ctrlKey || e.metaKey
+  const isTrackpad = e.deltaMode === WheelEvent.DOM_DELTA_PIXEL
+  // 双指 pinch / Ctrl+滚轮 / 普通鼠标滚轮：缩放
+  // 双指滑动（trackpad pixel 模式）或 Shift+滚轮：平移
+  if (isPinch || (!isTrackpad && !e.shiftKey)) {
+    cameraControl.radiusOffset -= e.deltaY * 0.002
+  }
+  else {
+    cameraControl.panX += e.deltaX * 0.002
+    cameraControl.panY -= e.deltaY * 0.002
+  }
+}
+
+function attachCameraListeners() {
+  if (!container.value || cameraListenersAttached) return
+  container.value.addEventListener('pointerdown', handlePointerDown)
+  container.value.addEventListener('pointermove', handlePointerMove)
+  container.value.addEventListener('pointerup', handlePointerUp)
+  container.value.addEventListener('pointerleave', handlePointerUp)
+  container.value.addEventListener('wheel', handleWheel, { passive: false })
+  cameraListenersAttached = true
+}
+
+function detachCameraListeners() {
+  if (!container.value || !cameraListenersAttached) return
+  container.value.removeEventListener('pointerdown', handlePointerDown)
+  container.value.removeEventListener('pointermove', handlePointerMove)
+  container.value.removeEventListener('pointerup', handlePointerUp)
+  container.value.removeEventListener('pointerleave', handlePointerUp)
+  container.value.removeEventListener('wheel', handleWheel)
+  cameraListenersAttached = false
+}
+
+function resetCamera() {
+  Object.assign(cameraControl, CAMERA_BASE)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // 运行时更新函数
+// tour-marker: material-update
 // ─────────────────────────────────────────────────────────────────────────────
 function updateNoiseUniforms() {
   const n = props.config.noise
@@ -253,9 +365,11 @@ function updateNoiseUniforms() {
   noiseUniforms.uMouseInfluence.value = n.mouseInfluence
 }
 
+// tour-marker: noise-uniforms
 function updateGeometry() {
   if (!sphere) return
   const oldGeometry = geometry
+  // tour-marker: geometry-update
   geometry = new THREE.IcosahedronGeometry(props.config.geometry.radius, props.config.geometry.detail)
   sphere.geometry = geometry
   oldGeometry?.dispose()
@@ -275,14 +389,17 @@ function updateMaterial() {
   material.clearcoatRoughness = m.clearcoatRoughness
   material.iridescence = m.iridescence
   material.iridescenceIOR = m.iridescenceIOR
+  // tour-marker: material-iridescence-range
   material.iridescenceThicknessRange[0] = m.iridescenceThicknessMin
   material.iridescenceThicknessRange[1] = m.iridescenceThicknessMax
+  // tour-marker: env-map-intensity
   material.envMapIntensity = m.envMapIntensity
   // 标量属性变更不需要强制 needsUpdate；保留注释说明即可
 }
 
 function updateCamera() {
-  if (camera) camera.position.z = props.config.camera.z
+  // config.camera.z 只作为基准半径，实际位置由 updateCameraTransform 应用交互偏移
+  updateCameraTransform()
 }
 
 function updateBloomPass() {
@@ -295,6 +412,7 @@ function updateBloomPass() {
 
 let bloomRevision = 0
 
+// tour-marker: bloom-rebuild
 async function rebuildBloomPipeline() {
   if (!renderer || !scene || !camera || !container.value) return
   const currentRevision = ++bloomRevision
@@ -350,7 +468,7 @@ onMounted(async () => {
 
   scene = new THREE.Scene()
   camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100)
-  camera.position.z = props.config.camera.z
+  updateCameraTransform()
 
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
   renderer.setSize(width, height)
@@ -365,19 +483,24 @@ onMounted(async () => {
   scene.environment = envMap
 
   // ── 几何体 ──
+  // tour-marker: geometry-create
   geometry = new THREE.IcosahedronGeometry(props.config.geometry.radius, props.config.geometry.detail)
 
   // ── 材质 ──
+  // tour-marker: material-init
   material = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(props.config.material.color),
     emissive: new THREE.Color(props.config.material.emissive),
     metalness: props.config.material.metalness,
     roughness: props.config.material.roughness,
+    // tour-marker: material-glass
     transmission: props.config.material.transmission,
     thickness: props.config.material.thickness,
     ior: props.config.material.ior,
+    // tour-marker: material-clearcoat
     clearcoat: props.config.material.clearcoat,
     clearcoatRoughness: props.config.material.clearcoatRoughness,
+    // tour-marker: material-iridescence
     iridescence: props.config.material.iridescence,
     iridescenceIOR: props.config.material.iridescenceIOR,
     iridescenceThicknessRange: [props.config.material.iridescenceThicknessMin, props.config.material.iridescenceThicknessMax],
@@ -386,6 +509,7 @@ onMounted(async () => {
   })
 
   // ── Shader 注入：多层 noise + 鼠标驱动形变 ──
+  // tour-marker: shader-inject
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 }
     shader.uniforms.uMouse = { value: new THREE.Vector2(0, 0) }
@@ -411,6 +535,7 @@ onMounted(async () => {
       float displacement = snoise(position * uLowFreq + vec3(0.0, uTime * uLowSpeed, 0.0)) * uLowAmp;
       displacement += snoise(position * uHighFreq + vec3(uTime * uHighSpeed * 0.7, uTime * uHighSpeed, 0.0)) * uHighAmp;
 
+      // tour-marker: mouse-deform
       vec3 mouseDir = normalize(vec3(uMouse.x, uMouse.y, 0.35));
       float mouseProximity = smoothstep(0.85, 0.0, distance(normalize(position), mouseDir));
       displacement += mouseProximity * uMouseInfluence;
@@ -441,11 +566,16 @@ onMounted(async () => {
   await rebuildBloomPipeline()
 
   container.value.addEventListener('mousemove', handleMouseMove)
+  if (props.enableCameraControl) {
+    attachCameraListeners()
+  }
 
   const clock = new THREE.Clock()
   const animate = () => {
     rafId = requestAnimationFrame(animate)
     const elapsed = clock.getElapsedTime()
+
+    updateCameraTransform()
 
     // 鼠标平滑
     const decay = isMouseActive.value ? 0.0 : props.config.mouse.idleDecay
@@ -464,6 +594,7 @@ onMounted(async () => {
     }
 
     if (composer) {
+      // tour-marker: bloom-render
       composer.render()
     } else if (renderer && scene && camera) {
       renderer.render(scene, camera)
@@ -487,11 +618,19 @@ onMounted(async () => {
   // onUnmounted 必须在 setup 顶层注册，因此清理逻辑使用组件级变量
 })
 
+watch(() => props.enableCameraControl, (enabled) => {
+  if (enabled) attachCameraListeners()
+  else detachCameraListeners()
+})
+
+defineExpose({ resetCamera })
+
 onUnmounted(() => {
   if (handleResize) {
     window.removeEventListener('resize', handleResize)
   }
   container.value?.removeEventListener('mousemove', handleMouseMove)
+  detachCameraListeners()
   window.clearTimeout(mouseTimeout)
   cancelAnimationFrame(rafId)
 
@@ -522,6 +661,10 @@ onUnmounted(() => {
   justify-content: center;
   pointer-events: auto;
   overflow: hidden;
+}
+
+.sphere-scene.has-camera-control {
+  touch-action: none;
 }
 
 .sphere-scene canvas {

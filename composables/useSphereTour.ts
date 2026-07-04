@@ -14,6 +14,8 @@ import {
  * 用 Object.assign 将目标 patch 增量应用到稳定对象上，从而与
  * BannerSphere 的字段级 watch 契约保持一致——只有真正变化的
  * 字段才会触发对应更新函数。
+ *
+ * 所有步骤均可直接选择，没有锁定逻辑。
  */
 export function useSphereTour() {
   const steps = createTourSteps()
@@ -38,23 +40,11 @@ export function useSphereTour() {
   // 初始应用 Step 0 的配置
   applyPatchesUpTo(0)
 
-  const completedSteps = computed(() =>
-    steps.map((_, index) => index <= activeStepIndex.value)
-  )
-
   const currentStep = computed(() => steps[activeStepIndex.value])
 
-  function toggleStep(index: number) {
+  function selectStep(index: number) {
     if (index < 0 || index >= steps.length) return
-
-    if (index === activeStepIndex.value + 1) {
-      // 前进一步
-      activeStepIndex.value = index
-    } else if (index <= activeStepIndex.value) {
-      // 取消当前或回退到更早步骤
-      activeStepIndex.value = index
-    }
-    // 不允许跳到更远的未来步骤
+    activeStepIndex.value = index
   }
 
   function completeAll() {
@@ -72,10 +62,9 @@ export function useSphereTour() {
   return {
     steps,
     activeStepIndex,
-    completedSteps,
     tourConfig,
     currentStep,
-    toggleStep,
+    selectStep,
     completeAll,
     resetTour,
   }
