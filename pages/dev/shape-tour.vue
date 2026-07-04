@@ -8,34 +8,28 @@
       </div>
 
       <nav class="step-list">
-        <label
+        <button
           v-for="(step, index) in steps"
           :key="step.id"
+          type="button"
           class="step-item"
-          :class="{
-            'is-active': index === activeStepIndex,
-            'is-completed': completedSteps[index],
-            'is-locked': index > activeStepIndex + 1,
-          }"
+          :class="{ 'is-active': index === activeStepIndex }"
+          @click="selectStepAndPulse(index)"
         >
-          <input
-            type="checkbox"
-            class="step-checkbox"
-            :checked="completedSteps[index]"
-            :disabled="index > activeStepIndex + 1"
-            @click.prevent="handleToggle(index)"
-          />
           <span class="step-number">{{ index }}</span>
           <span class="step-title">{{ step.title }}</span>
-        </label>
+        </button>
       </nav>
 
       <div class="sidebar-actions">
         <button type="button" class="tour-btn" @click="completeAll">
           全部完成
         </button>
-        <button type="button" class="tour-btn tour-btn-ghost" @click="resetTour">
+        <button type="button" class="tour-btn tour-btn-ghost" @click="resetTourAndPulse">
           重置
+        </button>
+        <button type="button" class="tour-btn tour-btn-ghost" title="复位视角 (R)" @click="resetCamera">
+          视角
         </button>
       </div>
     </aside>
@@ -44,7 +38,9 @@
     <main class="tour-stage" aria-label="Shape 预览">
       <ClientOnly>
         <BannerSphere
+          ref="sphereRef"
           :config="tourConfig"
+          enable-camera-control
           class="sphere"
           :class="{ 'is-pulsing': isPulsing }"
         />
@@ -57,13 +53,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import GUI from 'lil-gui'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
+import type BannerSphere from '~/components/BannerSphere.vue'
+import { addController, getGuiFieldMeta, getPatchFieldPaths } from '~/utils/tourGuiFolders'
 
 /**
  * dev/shape-tour 交互式构建教学页。
  *
- * 以步骤勾选的方式让 UI/UX 与动效设计师理解 BannerSphere
- * 从基础几何体到最终视觉的完整构建过程。
+ * 左侧为步骤选择（无锁定，点击任意步骤即可跳转），右侧 3D 预览，
+ * 右上角 lil-gui 仅展示当前 step 涉及的分步参数，底部为教学卡片。
  */
 definePageMeta({
   layout: false,
@@ -73,24 +72,82 @@ useHead({
   title: 'Dev / Shape Tour — Banner Sphere Builder',
 })
 
-const { steps, activeStepIndex, completedSteps, tourConfig, currentStep, toggleStep, completeAll, resetTour } = useSphereTour()
+const sphereRef = ref<InstanceType<typeof BannerSphere> | null>(null)
+
+const { steps, activeStepIndex, tourConfig, currentStep, selectStep, completeAll, resetTour } = useSphereTour()
 
 const isPulsing = ref(false)
+
+let pulseTimeout = 0
 
 /**
  * 触发一次视觉脉冲，让学习者感知 shape 已重新渲染。
  */
 function triggerPulse() {
   isPulsing.value = true
-  window.setTimeout(() => {
+  window.clearTimeout(pulseTimeout)
+  pulseTimeout = window.setTimeout(() => {
     isPulsing.value = false
   }, 150)
 }
 
-function handleToggle(index: number) {
-  toggleStep(index)
+function selectStepAndPulse(index: number) {
+  selectStep(index)
   triggerPulse()
 }
+
+function resetTourAndPulse() {
+  resetTour()
+  triggerPulse()
+}
+
+function resetCamera() {
+  sphereRef.value?.resetCamera()
+}
+
+// ── 分步调参面板 ──
+let gui: GUI | null = null
+
+function buildStepGui(root: GUI, stepIndex: number) {
+  const step = steps[stepIndex]
+  if (!step) return
+  const fields = getPatchFieldPaths(step.patch)
+  const folders = new Map<string, GUI>()
+
+  function getFolder(name: string): GUI {
+    if (!folders.has(name)) {
+      folders.set(name, root.addFolder(name))
+    }
+    return folders.get(name)!
+  }
+
+  for (const key of fields) {
+    const meta = getGuiFieldMeta(key)
+    if (!meta) continue
+    const folder = getFolder(meta.folder)
+    addController(folder, tourConfig, key)
+  }
+}
+
+function rebuildGui() {
+  if (!gui) return
+  gui.destroy()
+  gui = new GUI({ title: 'Step Params' })
+  buildStepGui(gui, activeStepIndex.value)
+}
+
+onMounted(() => {
+  gui = new GUI({ title: 'Step Params' })
+  buildStepGui(gui, activeStepIndex.value)
+})
+
+onUnmounted(() => {
+  window.clearTimeout(pulseTimeout)
+  gui?.destroy()
+  gui = null
+})
+
+watch(activeStepIndex, rebuildGui)
 </script>
 
 <style scoped>
@@ -149,8 +206,10 @@ function handleToggle(index: number) {
   border-radius: 10px;
   background-color: rgba(255, 255, 255, 0.03);
   border: 1px solid transparent;
+  color: rgb(241, 235, 226);
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease;
+  text-align: left;
 }
 
 .step-item:hover {
@@ -160,23 +219,6 @@ function handleToggle(index: number) {
 .step-item.is-active {
   border-color: rgba(255, 83, 34, 0.5);
   background-color: rgba(255, 83, 34, 0.08);
-}
-
-.step-item.is-locked {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.step-checkbox {
-  width: 18px;
-  height: 18px;
-  accent-color: rgb(255, 83, 34);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.step-item.is-locked .step-checkbox {
-  cursor: not-allowed;
 }
 
 .step-number {
@@ -196,11 +238,6 @@ function handleToggle(index: number) {
 .step-item.is-active .step-number {
   background-color: rgb(255, 83, 34);
   color: rgb(255, 255, 255);
-}
-
-.step-item.is-completed .step-number {
-  background-color: rgba(140, 220, 160, 0.18);
-  color: rgb(140, 220, 160);
 }
 
 .step-title {
@@ -257,6 +294,18 @@ function handleToggle(index: number) {
 .sphere.is-pulsing {
   opacity: 0.85;
   transform: scale(0.985);
+}
+
+/* 让 lil-gui 面板在暗色页面上更醒目 */
+:global(.lil-gui) {
+  --background-color: rgba(30, 25, 20, 0.92);
+  --text-color: rgb(241, 235, 226);
+  --title-background-color: rgb(255, 83, 34);
+  --widget-color: rgba(255, 255, 255, 0.12);
+  --hover-color: rgba(255, 255, 255, 0.18);
+  --focus-color: rgba(255, 83, 34, 0.5);
+  --number-color: rgb(255, 180, 120);
+  --string-color: rgb(140, 220, 160);
 }
 
 @media (max-width: 768px) {

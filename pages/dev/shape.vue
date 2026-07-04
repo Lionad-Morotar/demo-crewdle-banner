@@ -1,20 +1,25 @@
 <template>
   <div class="shape-debug-page">
-    <ClientOnly>
-      <BannerSphere :config="config" class="sphere" />
-    </ClientOnly>
+    <!-- 中央视觉区 -->
+    <main class="shape-stage" aria-label="Shape 预览">
+      <ClientOnly>
+        <BannerSphere :config="config" enable-camera-control class="sphere" />
+      </ClientOnly>
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import GUI from 'lil-gui'
 import { onMounted, onUnmounted } from 'vue'
+import { useSphereConfig } from '~/composables/useSphereConfig'
+import { addController, TOUR_GUI_FIELDS } from '~/utils/tourGuiFolders'
 
 /**
  * dev/shape 调参页面。
  *
- * 单独挂载 BannerSphere 并通过 lil-gui 暴露所有视觉参数，
- * 仅客户端渲染，避免 SSR 访问 DOM/WebGL。
+ * 提供完整的 lil-gui 全参数面板，供设计师自由探索所有视觉参数。
+ * 分步调参面板已移至 dev/shape-tour。
  */
 definePageMeta({
   layout: false,
@@ -28,66 +33,23 @@ const { config, resetConfig } = useSphereConfig()
 
 let gui: GUI | null = null
 
-onMounted(() => {
-  gui = new GUI({ title: 'Banner Sphere' })
+function buildAllParamsGui(root: GUI) {
+  const folders = new Map<string, GUI>()
 
-  const geometry = gui.addFolder('Geometry')
-  geometry.add(config.geometry, 'radius', 0.5, 3.0, 0.01)
-  geometry.add(config.geometry, 'detail', 0, 28, 1)
+  function getFolder(name: string): GUI {
+    if (!folders.has(name)) {
+      folders.set(name, root.addFolder(name))
+    }
+    return folders.get(name)!
+  }
 
-  const camera = gui.addFolder('Camera')
-  camera.add(config.camera, 'z', 1.0, 8.0, 0.05)
-
-  const materialBase = gui.addFolder('Material / Base')
-  materialBase.addColor(config.material, 'color')
-  materialBase.addColor(config.material, 'emissive')
-  materialBase.add(config.material, 'metalness', 0, 1, 0.01)
-  materialBase.add(config.material, 'roughness', 0, 1, 0.01)
-
-  const materialGlass = gui.addFolder('Material / Glass')
-  materialGlass.add(config.material, 'transmission', 0, 1, 0.01)
-  materialGlass.add(config.material, 'thickness', 0, 10, 0.1)
-  materialGlass.add(config.material, 'ior', 1.0, 2.5, 0.01)
-
-  const materialCoat = gui.addFolder('Material / Coat')
-  materialCoat.add(config.material, 'clearcoat', 0, 1, 0.01)
-  materialCoat.add(config.material, 'clearcoatRoughness', 0, 1, 0.01)
-
-  const materialIrid = gui.addFolder('Material / Iridescence')
-  materialIrid.add(config.material, 'iridescence', 0, 1, 0.01)
-  materialIrid.add(config.material, 'iridescenceIOR', 1.0, 2.5, 0.01)
-  materialIrid.add(config.material, 'iridescenceThicknessMin', 0, 1000, 10)
-  materialIrid.add(config.material, 'iridescenceThicknessMax', 0, 1000, 10)
-
-  const envMap = gui.addFolder('Lighting / EnvMap')
-  envMap.add(config.material, 'envMapIntensity', 0, 5, 0.05)
-
-  const noiseLow = gui.addFolder('Noise / Low Freq')
-  noiseLow.add(config.noise, 'lowFreq', 0, 2, 0.01)
-  noiseLow.add(config.noise, 'lowAmp', 0, 0.5, 0.001)
-  noiseLow.add(config.noise, 'lowSpeed', 0, 0.5, 0.001)
-
-  const noiseHigh = gui.addFolder('Noise / High Freq')
-  noiseHigh.add(config.noise, 'highFreq', 0, 5, 0.01)
-  noiseHigh.add(config.noise, 'highAmp', 0, 0.2, 0.001)
-  noiseHigh.add(config.noise, 'highSpeed', 0, 1, 0.001)
-
-  const noiseMouse = gui.addFolder('Noise / Mouse')
-  noiseMouse.add(config.noise, 'mouseInfluence', 0, 0.3, 0.001)
-
-  const mouseSmooth = gui.addFolder('Mouse / Smoothing')
-  mouseSmooth.add(config.mouse, 'lerp', 0, 0.2, 0.001)
-  mouseSmooth.add(config.mouse, 'idleDecay', 0, 0.1, 0.001)
-
-  const bloom = gui.addFolder('Post / Bloom')
-  bloom.add(config.bloom, 'enabled')
-  bloom.add(config.bloom, 'threshold', 0, 1, 0.01)
-  bloom.add(config.bloom, 'strength', 0, 1, 0.01)
-  bloom.add(config.bloom, 'radius', 0, 1, 0.01)
+  for (const meta of TOUR_GUI_FIELDS) {
+    const folder = getFolder(meta.folder)
+    addController(folder, config, meta.key)
+  }
 
   function resetAndRefresh() {
     resetConfig()
-    // 让当前聚焦的输入框失去焦点，确保 lil-gui 控制器重新读取对象值并刷新显示
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur()
     }
@@ -151,8 +113,13 @@ onMounted(() => {
     }
   }
 
-  gui.add({ reset: resetAndRefresh }, 'reset')
-  gui.add({ export: exportAsCode }, 'export')
+  root.add({ reset: resetAndRefresh }, 'reset')
+  root.add({ export: exportAsCode }, 'export')
+}
+
+onMounted(() => {
+  gui = new GUI({ title: 'Banner Sphere' })
+  buildAllParamsGui(gui)
 })
 
 onUnmounted(() => {
@@ -166,6 +133,14 @@ onUnmounted(() => {
   position: fixed;
   inset: 0;
   background-color: rgb(21, 17, 13);
+  color: rgb(241, 235, 226);
+}
+
+.shape-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 .sphere {
