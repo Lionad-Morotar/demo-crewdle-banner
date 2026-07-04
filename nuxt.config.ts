@@ -10,4 +10,7 @@ export default defineNuxtConfig({
   app: {
     baseURL: '/demo-crewdle-banner/',
   },
+  routeRules: {
+    '/dev/**': { prerender: false },
+  },
 })

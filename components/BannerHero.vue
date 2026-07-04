@@ -1,7 +1,9 @@
 <template>
   <section class="hero" aria-label="Hero">
-    <!-- 背景球体 -->
-    <BannerSphere />
+    <!-- 背景球体（仅客户端渲染，避免 SSR  hydration 闪烁） -->
+    <ClientOnly>
+      <BannerSphere />
+    </ClientOnly>
 
     <!-- 背景环境光晕 -->
     <div class="ambient-glow" aria-hidden="true"></div>
