@@ -18,6 +18,10 @@ Token 消耗
 
 ## 效果
 
+### 经过 Kimi 视频分析指导后
+
+![Current Banner](./assets/banner/after-kimi.png)
+
 ### Current Banner
 
 ![Current Banner](./assets/banner/current-fullpage.png)
