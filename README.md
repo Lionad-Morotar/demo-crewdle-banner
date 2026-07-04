@@ -18,10 +18,6 @@ Token 消耗
 
 ## 效果
 
-### 经过 Kimi 视频分析指导后
-
-![Current Banner](./assets/banner/after-kimi.png)
-
 ### Current Banner
 
 ![Current Banner](./assets/banner/current-fullpage.png)
@@ -29,3 +25,11 @@ Token 消耗
 ### Target Banner
 
 ![Target Banner](./assets/banner/target-fullpage.png)
+
+### 经过 Kimi 视频分析指导后
+
+![After Kimi](./assets/banner/after-kimi.png)
+
+### Config Panel
+
+![Config Panel](./assets/banner/config-panel.png)
