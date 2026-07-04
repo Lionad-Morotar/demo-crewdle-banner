@@ -293,44 +293,44 @@ function updateBloomPass() {
   bloomPass.radius = b.radius
 }
 
-let isRebuildingBloom = false
+let bloomRevision = 0
 
 async function rebuildBloomPipeline() {
-  if (!renderer || !scene || !camera || !container.value || isRebuildingBloom) return
-  isRebuildingBloom = true
+  if (!renderer || !scene || !camera || !container.value) return
+  const currentRevision = ++bloomRevision
+
+  const width = container.value.clientWidth
+  const height = container.value.clientHeight
+
+  // 清理旧后处理
+  if (composer) {
+    composer.dispose()
+    composer = null
+    bloomPass = null
+  }
+
+  if (!props.config.bloom.enabled) return
 
   try {
-    const width = container.value.clientWidth
-    const height = container.value.clientHeight
+    const { EffectComposer } = await import('three/examples/jsm/postprocessing/EffectComposer.js')
+    const { RenderPass } = await import('three/examples/jsm/postprocessing/RenderPass.js')
+    const { UnrealBloomPass } = await import('three/examples/jsm/postprocessing/UnrealBloomPass.js')
 
-    // 清理旧后处理
-    if (composer) {
-      composer.dispose()
-      composer = null
-      bloomPass = null
-    }
+    // 若期间有新的重建请求（currentRevision 落后），则丢弃本次结果，
+    // 避免用过期 enabled 状态创建 composer。
+    if (currentRevision !== bloomRevision) return
 
-    if (props.config.bloom.enabled) {
-      try {
-        const { EffectComposer } = await import('three/examples/jsm/postprocessing/EffectComposer.js')
-        const { RenderPass } = await import('three/examples/jsm/postprocessing/RenderPass.js')
-        const { UnrealBloomPass } = await import('three/examples/jsm/postprocessing/UnrealBloomPass.js')
-
-        composer = new EffectComposer(renderer)
-        composer.addPass(new RenderPass(scene, camera))
-        bloomPass = new UnrealBloomPass(
-          new THREE.Vector2(width, height),
-          props.config.bloom.strength,
-          props.config.bloom.radius,
-          props.config.bloom.threshold
-        )
-        composer.addPass(bloomPass)
-      } catch (e) {
-        console.warn('Bloom post-processing unavailable, falling back to standard render.', e)
-      }
-    }
-  } finally {
-    isRebuildingBloom = false
+    composer = new EffectComposer(renderer)
+    composer.addPass(new RenderPass(scene, camera))
+    bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(width, height),
+      props.config.bloom.strength,
+      props.config.bloom.radius,
+      props.config.bloom.threshold
+    )
+    composer.addPass(bloomPass)
+  } catch (e) {
+    console.warn('Bloom post-processing unavailable, falling back to standard render.', e)
   }
 }
 
