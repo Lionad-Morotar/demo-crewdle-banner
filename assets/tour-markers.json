@@ -1,0 +1,74 @@
+{
+  "simplex-noise": {
+    "file": "components/BannerSphere.vue",
+    "line": 82
+  },
+  "env-map-create": {
+    "file": "components/BannerSphere.vue",
+    "line": 135
+  },
+  "mouse-track": {
+    "file": "components/BannerSphere.vue",
+    "line": 249
+  },
+  "material-update": {
+    "file": "components/BannerSphere.vue",
+    "line": 355
+  },
+  "noise-uniforms": {
+    "file": "components/BannerSphere.vue",
+    "line": 368
+  },
+  "geometry-update": {
+    "file": "components/BannerSphere.vue",
+    "line": 372
+  },
+  "material-iridescence-range": {
+    "file": "components/BannerSphere.vue",
+    "line": 392
+  },
+  "env-map-intensity": {
+    "file": "components/BannerSphere.vue",
+    "line": 395
+  },
+  "bloom-rebuild": {
+    "file": "components/BannerSphere.vue",
+    "line": 415
+  },
+  "geometry-create": {
+    "file": "components/BannerSphere.vue",
+    "line": 486
+  },
+  "material-init": {
+    "file": "components/BannerSphere.vue",
+    "line": 490
+  },
+  "material-glass": {
+    "file": "components/BannerSphere.vue",
+    "line": 496
+  },
+  "material-clearcoat": {
+    "file": "components/BannerSphere.vue",
+    "line": 500
+  },
+  "material-iridescence": {
+    "file": "components/BannerSphere.vue",
+    "line": 503
+  },
+  "shader-inject": {
+    "file": "components/BannerSphere.vue",
+    "line": 512
+  },
+  "mouse-deform": {
+    "file": "components/BannerSphere.vue",
+    "line": 538
+  },
+  "bloom-render": {
+    "file": "components/BannerSphere.vue",
+    "line": 597
+  },
+  "config-material": {
+    "file": "composables/useSphereConfig.ts",
+    "line": 23
+  }
+}

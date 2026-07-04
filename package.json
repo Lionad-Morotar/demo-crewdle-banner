@@ -4,12 +4,16 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build",
+    "prebuild": "pnpm sync:tour-markers && pnpm sync:vscode-tour",
     "dev": "nuxt dev --host 0.0.0.0 --port 2350",
+    "predev": "pnpm sync:tour-markers && pnpm sync:vscode-tour",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "dev:crewdle-banner": "nuxt dev",
-    "test": "vitest run"
+    "test": "pnpm sync:tour-markers && pnpm sync:vscode-tour && vitest run",
+    "sync:tour-markers": "tsx scripts/resolve-tour-markers.ts",
+    "sync:vscode-tour": "tsx scripts/resolve-tour-markers.ts --vscode"
   },
   "dependencies": {
     "@types/three": "^0.184.1",
@@ -20,6 +24,7 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "tsx": "^4.23.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.9"
   },

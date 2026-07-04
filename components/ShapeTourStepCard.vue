@@ -19,9 +19,11 @@
     <section class="step-card-section" aria-label="代码位置">
       <h3 class="step-card-section-title">代码位置</h3>
       <dl class="code-location-list">
-        <div v-for="(location, index) in step.codeLocations" :key="index" class="code-location">
+        <div v-for="(location, index) in resolvedLocations" :key="index" class="code-location">
           <dt class="code-location-label">{{ location.label }}</dt>
-          <dd class="code-location-path">{{ location.path }}</dd>
+          <dd class="code-location-path" :class="{ 'is-missing': location.isMissing }">
+            {{ location.path }}
+          </dd>
         </div>
       </dl>
     </section>
@@ -29,19 +31,45 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { SphereTourStep } from '~/utils/sphereTourSteps'
+import markerMap from '~/assets/tour-markers.json'
 
 /**
  * 单个步骤的教学卡片。
  *
  * 展示当前步骤的标题、效果说明、关键技术点与对应代码路径。
+ * 代码路径中的行号由 marker 在构建期解析生成，避免行号腐烂。
  */
 interface Props {
   step: SphereTourStep
   stepIndex: number
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
+
+interface MarkerLocation {
+  file: string
+  line: number
+}
+
+const resolvedLocations = computed(() =>
+  props.step.codeLocations.map((location) => {
+    const resolved = (markerMap as Record<string, MarkerLocation>)[location.marker]
+    if (!resolved) {
+      return {
+        label: location.label,
+        path: `${location.marker} (marker missing)`,
+        isMissing: true,
+      }
+    }
+    return {
+      label: location.label,
+      path: `${resolved.file}:${resolved.line}`,
+      isMissing: false,
+    }
+  })
+)
 </script>
 
 <style scoped>
@@ -161,6 +189,10 @@ defineProps<Props>()
   font-size: 11px;
   color: rgb(255, 180, 120);
   margin: 0;
+}
+
+.code-location-path.is-missing {
+  color: rgb(255, 100, 100);
 }
 
 @media (max-width: 1024px) {

@@ -20,6 +20,7 @@ export interface SphereCameraConfig {
 }
 
 export interface SphereMaterialConfig {
+  // tour-marker: config-material
   /** 基础色 */
   color: string
   /** 自发光色 */
