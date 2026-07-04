@@ -33,7 +33,7 @@ onMounted(() => {
 
   const geometry = gui.addFolder('Geometry')
   geometry.add(config.geometry, 'radius', 0.5, 3.0, 0.01)
-  geometry.add(config.geometry, 'detail', 0, 6, 1)
+  geometry.add(config.geometry, 'detail', 0, 28, 1)
 
   const camera = gui.addFolder('Camera')
   camera.add(config.camera, 'z', 1.0, 8.0, 0.05)

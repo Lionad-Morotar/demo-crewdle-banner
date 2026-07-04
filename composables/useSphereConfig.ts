@@ -102,8 +102,8 @@ export interface SphereConfig {
 export function createDefaultConfig(): SphereConfig {
   return {
     geometry: {
-      radius: 1.45,
-      detail: 5,
+      radius: 1,
+      detail: 12,
     },
     camera: {
       z: 3.45,
