@@ -1,11 +1,11 @@
 {
-  "name": "crewdle-banner",
+  "name": "@lionad/demo-crewdle-banner",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "nuxt build",
     "prebuild": "pnpm sync:tour-markers && pnpm sync:vscode-tour",
-    "dev": "nuxt dev --host 0.0.0.0 --port 2350",
+    "dev": "nuxt dev --host 0.0.0.0 --port 3432",
     "predev": "pnpm sync:tour-markers && pnpm sync:vscode-tour",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
